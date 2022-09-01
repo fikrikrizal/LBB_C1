@@ -1,0 +1,281 @@
+---
+title: "Prediksi Pelanggan dari Distributor Grosir"
+author: "Fikri K Rizal"
+date: "2022-08-28"
+output: rmdformats::readthedown
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Pendahuluan
+
+Dalam portofolio `Learning by Building` untuk `Machine Learning: Classification 1`, saya akan menganalisis data `wholesale` tentang jenis pelanggan dari distributor grosir berdasarkan variabel-variabel pengeluaran tahunan dari beberapa jenis produknya. Dalam proses pembuatan model prediksi, saya menggunakan logistik regression dan k-nearest neighbor yang termasuk dalam supervised learning.
+
+# Data Preparation
+
+## Library
+
+Langkah pertama yang harus dilakukan adalah `install.package()` dan / atau mengaktifkan `library()` yang dibutuhkan dalam proses analisis dan pembuatan model prediksi.
+
+```{r}
+library(dplyr)
+library(gtools)
+library(gmodels)
+library(ggplot2)
+library(class)
+library(tidyr)
+library(caret)
+library(rsample)
+```
+
+## Load Dataset
+
+Dataset yang akan digunakan adalah data tentang pelanggan dari distributor grosir yang mencakup besaran pengeluaran tahunan berdasarkan produk yang ada.
+
+```{r}
+wholesale <- read.csv("wholesale.csv")
+
+head(wholesale)
+```
+
+- `Channel`: Pelanggan dari Distributor Grosir, 1: Horeca (Hotel, Restoran, Cafe) dan 2: Ritel.
+- `Region`: Wilayah pelanggan, 1: Lisbon, 2: Porto dan 3: lainnya.
+- `Fresh`: Pengeluaran tahunan untuk produk segar (Fresh).
+- `Milk`: Pengeluaran tahunan untuk produk susu (Milk).
+- `Grocery`: Pengeluaran tahunan untuk produk kelontong (Grocery).
+- `Frozen`: Pengeluaran tahunan untuk produk beku (Frozen).
+- `Detergents_Paper`: Pengeluaran tahunan untuk produk deterjen dan produk kertas (Detergents & Paper).
+- `Delicassen`: Pengeluaran tahunan untuk produk delicatessen.
+
+## Cek Tipe Data
+
+Dari data yang ada, cek apakah semua tipe data yang ada telah sesuai.
+
+```{r}
+glimpse(wholesale)
+```
+
+## Menghapus Kolom
+
+Dari data yang sudah ada, kolom `Region` bisa dihapus.
+
+```{r}
+wholesale <- wholesale %>% 
+  select(-Region)
+```
+
+## Mengubah Tipe Data
+
+Terdapat 2 kolom yang tipe datanya belum sesuai, sehingga perlu mengubah tipe data dari 2 kolom tersebut.
+
+```{r}
+wholesale <- wholesale %>% 
+  mutate(Channel = as.factor(Channel))
+
+glimpse(wholesale)
+```
+
+## Cek Missing Value
+
+Selanjutnya perlu mengetahui apakah ada `missing value` pada dataset `wholesale`.
+
+```{r}
+colSums(is.na(wholesale))
+```
+
+## Cek Proporsi dari Variabel Target `wholesale$Channel`
+
+```{r}
+prop.table(table(wholesale$Channel))
+```
+
+## Membagi Data Train & Test
+
+Data yang sudah ada, dibagi menjadi 2, yaitu data train yang digunakan untuk membuat modal dan data test untuk mengevaluasi model.
+
+```{r}
+set.seed(193)
+intrain <- sample(nrow(wholesale), size = 0.8*nrow(wholesale))
+wholesale_train <- wholesale[intrain,]
+wholesale_test <- wholesale[-intrain,]
+wholesale$Channel %>% 
+  levels()
+```
+
+# Logistic Regression
+
+Dengan permodelan `Logistic Regression`, akan dibuat 2 model, model pertama dengan menggunakan semua variabel pada data dan model kedua menggunakan `stepwise`.
+
+## Model dengan Semua Variabel
+
+Pertama, dibuat model menggunakan semua variabel prediktor.
+
+### Model
+
+Untuk pembuatan model, fungsi yang digunakan adalah fungsi `glm`.
+
+```{r}
+model1 <- glm(formula = Channel~., family = "binomial", 
+             data = wholesale)
+summary(model1)
+```
+
+### Prediksi 
+
+Dari model yang telah dibuat, selanjutnya membuat prediksi dengan data test yang telah dibagi sebelumnya.
+
+```{r}
+pred1 <- predict(model1, type = "response", newdata = wholesale_test)
+```
+
+```{r}
+pred1_Label <- ifelse(test = pred1 > 0.5,
+                      yes = 2,
+                      no = 1)
+```
+
+### Evaluasi
+
+Dengan data prediksi yang telah dibuat, bisa dilakukan evaluasi dengan data aktual dari data test dengan `confusionMatrix`.
+
+```{r}
+pred_model1_conf <- confusionMatrix(data = as.factor(pred1_Label), #hasil prediksi dari model yg sudah dibuat
+                                    reference = wholesale_test$Channel, #data aktual dari data test
+                                    positive = "2")
+
+pred_model1_conf
+```
+
+
+## Model dengan Fitting Stepwise
+
+Kedua, model yang dibuat menggunakan `stepwise` dari model pertama yang menggunakan semua variabel prediktor.
+
+### Model
+
+Untuk pembuatan model, fungsi yang digunakan adalah fungsi `glm`.
+
+```{r}
+model2 <- step(object = model1,
+               direction = "backward",
+               trace = 0)
+
+summary(model2)
+```
+
+### Prediksi
+
+Dari model `stepwise` yang telah dibuat, selanjutnya membuat prediksi dengan data test yang telah dibagi sebelumnya.
+
+```{r}
+pred2 <- predict(model2, type = "response", newdata = wholesale_test)
+```
+
+```{r}
+pred2_Label <- ifelse(test = pred2 > 0.5,
+                      yes = 2,
+                      no = 1)
+```
+
+### Evaluasi
+
+Dengan data prediksi yang telah dibuat, bisa dilakukan evaluasi dengan data aktual dari data test dengan `confusionMatrix`.
+
+```{r}
+pred_model2_conf <- confusionMatrix(data = as.factor(pred2_Label), #hasil prediksi dari model yg sudah dibuat
+                                    reference = wholesale_test$Channel, #data aktual dari data test
+                                    positive = "2")
+
+pred_model2_conf
+```
+
+# K-Nearest Neighbour
+
+Untuk model yang ketiga, menggunakan K-Nearest Neighbour.
+
+## Data Pre-processing
+
+Pada model KNN ini, tidak perlu membuat model, sehingga diperlukan persiapan data.
+
+### Memisahkan Prediktor dan Target
+
+Pada model KNN, variabel prediktor dan variabel target harus dipisahkan.
+
+```{r}
+wholesale_train_x <- wholesale_train %>% 
+  select(-Channel)
+wholesale_test_x <- wholesale_test %>% 
+  select(-Channel)
+
+wholesale_train_y <- wholesale_train$Channel
+wholesale_test_y <- wholesale_test$Channel
+```
+
+### Scaling Data
+
+```{r}
+summary(wholesale)
+```
+
+Dari range data `wholesale`, range dari masing-masing variabel memiliki skala yang berbeda-beda. Karena range harus sama karena knn mengklasifikasikan berdasarkan **jarak**
+
+```{r}
+#tidak menggunakan argumen center dan scale karena data train
+wholesale_train_x_scale <- scale(x = wholesale_train_x)
+
+#menggunakan center dan scale dari data train
+wholesale_test_x_scale <- scale(x = wholesale_test_x,
+                           center = attr(wholesale_train_x_scale, "scaled:center"),
+                           scale  =attr(wholesale_train_x_scale, "scaled:scale"))
+```
+
+### Prediksi
+
+Sebelum membuat prediksi, dicari nilai `k` menggunakan akar dari jumlah data.
+
+```{r}
+sqrt(nrow(wholesale_train))
+```
+
+Karena pada `KNN` tidak membuat model, maka langsung dibuat prediksi.
+
+```{r}
+pred_knn <- knn(train = wholesale_train_x_scale,
+                test = wholesale_test_x_scale,
+                cl = wholesale_train_y, #menggunakan dataframe harus dipanggil nama kolomnya/variabelnya
+                k = 19)
+
+
+head(pred_knn)
+```
+### Evaluasi
+
+Dengan data prediksi yang telah dibuat, bisa dilakukan evaluasi dengan data aktual dari data test dengan `confusionMatrix`.
+
+```{r}
+pred_knn_conf <- confusionMatrix(data = as.factor(pred_knn), #hasil prediksi dari model yg sudah dibuat
+                                 reference = wholesale_test$Channel, #data aktual dari data test
+                                 positive = "2")
+
+pred_knn_conf
+```
+
+# Model Evaluation
+
+Dari semua model dan prediksi yang telah dibuat, dibandingkan hasil evaluasi dari masing-masing `confusionMatrix` setiap model.
+
+```{r}
+model_eval <- data.frame(Model_prediksi = c("Model Logit Semua Prediktor", "Model Logit Step", "Model KNN"),
+                         Accuracy = c(pred_model1_conf$overall[1],pred_model2_conf$overall[1],pred_knn_conf$overall[1]),
+                         Recall = c(pred_model1_conf$byClass[1],pred_model2_conf$byClass[1],pred_knn_conf$byClass[1]),
+                         Specificity = c(pred_model1_conf$byClass[2],pred_model2_conf$byClass[2],pred_knn_conf$byClass[2]),
+                         Precision = c(pred_model1_conf$byClass[3],pred_model2_conf$byClass[3],pred_knn_conf$byClass[3]))
+
+model_eval
+```
+
+# Conclusion
+
+Dari data `wholesale`, telah dibuat model dengan algoritma `logistic regression` dan `K-Nearest Neighbour`. Hasil evaluasi dari prediksi pada semua model, menunjukkan prediksi dengan `K-Nearest Neighbour` menghasilkan model yang lebih baik dibanding model dengan `logistic regression`.
